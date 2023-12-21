@@ -139,14 +139,19 @@ itk::SmartPointer<ShortImageType> Dicom2ItkConverter::nextResult()
                     m_groupIterator = m_segmentGroups.end();
                     return nullptr;
                 }
-                if (!itkImage->TransformPhysicalPointToIndex(frameOriginPoint, frameOriginIndex))
-                {
-                    cerr << "ERROR: Frame " << framesForSegment[frameIndex] << " origin " << frameOriginPoint
-                         << " is outside image geometry!" << frameOriginIndex << endl;
-                    cerr << "Image size: " << itkImage->GetBufferedRegion().GetSize() << endl;
-                    m_groupIterator = m_segmentGroups.end();
-                    return nullptr;
-                }
+                
+                slicer_itk::ContinuousIndex<double, 3> frameOrigin_cidx = itkImage->TransformPhysicalPointToContinuousIndex<double>(frameOriginPoint);
+                cout << "Frame "       << framesForSegment[frameIndex] << 
+                        " Origin "     << frameOriginPoint << 
+                        " | Index: "   << frameOrigin_cidx << 
+                        " | Spacing: " << m_computedSliceSpacing << endl;
+                itkImage->TransformPhysicalPointToIndex(frameOriginPoint, frameOriginIndex);
+                // don't check if the origin of the slice is in the 3d domain of the image. This is a brainlab specific workaround.
+                // if (!itkImage->TransformPhysicalPointToIndex(frameOriginPoint, frameOriginIndex))
+                // {
+                // m_groupIterator = m_segmentGroups.end();
+                    // return nullptr;
+                // }
                 // Handling differs depending on whether the segmentation is binary or fractional
                 // (we have to unpack binary frames before copying them into the ITK image)
                 const DcmIODTypes::Frame* rawFrame      = m_segDoc->getFrame(framesForSegment[frameIndex]);
@@ -310,7 +315,14 @@ OFCondition Dicom2ItkConverter::extractBasicSegmentationInfo()
     if (getDeclaredImageSpacing(fgInterface, m_imageSpacing))
     {
         cerr << "ERROR: Failed to get image spacing from DICOM!" << endl;
+        cerr << "spacing obtained from DICOM :" << m_imageSpacing << endl;
+        // if the spacing we get here is invalid, backup to m_computedSliceSpacing
         throw -1;
+    }
+    
+    if (m_computedSliceSpacing>0){
+            cerr << "backing up to computed slice spacing" << endl;
+            m_imageSpacing[2] = m_computedSliceSpacing;
     }
 
     if (!m_imageSpacing[2])
